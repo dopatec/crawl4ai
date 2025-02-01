@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from 'react-query';
 import {
   Box,
   Button,
@@ -6,158 +7,166 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  IconButton,
   TextField,
   FormControlLabel,
   Switch,
-  Typography,
-  Paper,
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
+  IconButton,
+  CircularProgress,
+  Typography,
+  Paper,
+  Alert,
 } from '@mui/material';
-import { 
-  DataGrid, 
+import {
+  DataGrid,
   GridColDef,
+  GridValueGetterParams,
   GridRenderCellParams,
-  GridValueGetterParams
 } from '@mui/x-data-grid';
 import { Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { format } from 'date-fns';
-import { ScheduledCrawl, ExtractionMode } from '../types';
+import { ScheduledCrawl, NewScheduledCrawl, CrawlConfig, ExtractionMode } from '../types';
+
+const defaultCrawlConfig: CrawlConfig = {
+  url: '',
+  mode: 'default',
+  options: {},
+  user_id: 'demo-user',
+};
 
 const ScheduledCrawls: React.FC = () => {
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [selectedSchedule, setSelectedSchedule] = useState<ScheduledCrawl | null>(null);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [editingCrawl, setEditingCrawl] = useState<ScheduledCrawl | null>(null);
+  const [formData, setFormData] = useState<Partial<NewScheduledCrawl>>({
+    config: defaultCrawlConfig,
+    schedule: '0 0 * * *',
+    enabled: true,
+  });
+
   const queryClient = useQueryClient();
 
-  const { data: schedules = [], isLoading } = useQuery<ScheduledCrawl[]>(
-    'schedules',
+  const { data: crawls, isLoading, error } = useQuery<ScheduledCrawl[]>(
+    'scheduled-crawls',
     async () => {
-      const response = await fetch('http://localhost:8000/api/schedules');
-      if (!response.ok) {
-        throw new Error('Failed to fetch schedules');
-      }
+      const response = await fetch('http://localhost:8000/api/scheduled-crawls');
+      if (!response.ok) throw new Error('Failed to fetch scheduled crawls');
       return response.json();
     }
   );
 
-  const createMutation = useMutation<ScheduledCrawl, Error, Partial<ScheduledCrawl>>(
-    async (newSchedule) => {
-      const response = await fetch('http://localhost:8000/api/schedules', {
+  const createMutation = useMutation<ScheduledCrawl, Error, NewScheduledCrawl>(
+    async (crawl) => {
+      const response = await fetch('http://localhost:8000/api/scheduled-crawls', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(newSchedule)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(crawl),
       });
-      if (!response.ok) {
-        throw new Error('Failed to create schedule');
-      }
+      if (!response.ok) throw new Error('Failed to create scheduled crawl');
       return response.json();
     },
     {
       onSuccess: () => {
-        queryClient.invalidateQueries('schedules');
-        setDialogOpen(false);
-      }
+        queryClient.invalidateQueries('scheduled-crawls');
+        setOpenDialog(false);
+      },
     }
   );
 
-  const updateMutation = useMutation<ScheduledCrawl, Error, Partial<ScheduledCrawl>>(
-    async (updatedSchedule) => {
-      const response = await fetch(`http://localhost:8000/api/schedules/${updatedSchedule.id}`, {
+  const updateMutation = useMutation<ScheduledCrawl, Error, ScheduledCrawl>(
+    async (crawl) => {
+      const response = await fetch(`http://localhost:8000/api/scheduled-crawls/${crawl.id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(updatedSchedule)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(crawl),
       });
-      if (!response.ok) {
-        throw new Error('Failed to update schedule');
-      }
+      if (!response.ok) throw new Error('Failed to update scheduled crawl');
       return response.json();
     },
     {
       onSuccess: () => {
-        queryClient.invalidateQueries('schedules');
-        setDialogOpen(false);
-      }
+        queryClient.invalidateQueries('scheduled-crawls');
+        setOpenDialog(false);
+      },
     }
   );
 
   const deleteMutation = useMutation<void, Error, string>(
     async (id) => {
-      const response = await fetch(`http://localhost:8000/api/schedules/${id}`, {
-        method: 'DELETE'
+      const response = await fetch(`http://localhost:8000/api/scheduled-crawls/${id}`, {
+        method: 'DELETE',
       });
-      if (!response.ok) {
-        throw new Error('Failed to delete schedule');
-      }
+      if (!response.ok) throw new Error('Failed to delete scheduled crawl');
     },
     {
       onSuccess: () => {
-        queryClient.invalidateQueries('schedules');
-      }
+        queryClient.invalidateQueries('scheduled-crawls');
+      },
     }
   );
 
-  const columns: GridColDef<ScheduledCrawl>[] = [
+  const columns: GridColDef[] = [
     {
-      field: 'config',
+      field: 'url',
       headerName: 'URL',
       flex: 1,
-      valueGetter: (params: GridValueGetterParams<ScheduledCrawl>) => params.row.config.url
+      valueGetter: (params: GridValueGetterParams) => params.row.config.url,
     },
     {
       field: 'schedule',
       headerName: 'Schedule',
-      width: 200
+      flex: 1,
     },
     {
       field: 'enabled',
       headerName: 'Status',
       width: 120,
-      renderCell: (params: GridRenderCellParams<ScheduledCrawl>) => (
-        <Box
-          sx={{
-            backgroundColor: params.row.enabled ? 'success.light' : 'error.light',
-            color: 'white',
-            px: 1,
-            py: 0.5,
-            borderRadius: 1
-          }}
-        >
-          {params.row.enabled ? 'Active' : 'Inactive'}
-        </Box>
-      )
+      renderCell: (params: GridRenderCellParams) => (
+        <FormControlLabel
+          control={
+            <Switch
+              checked={params.row.enabled}
+              onChange={() => {
+                const updatedCrawl: ScheduledCrawl = {
+                  ...params.row,
+                  enabled: !params.row.enabled,
+                };
+                updateMutation.mutate(updatedCrawl);
+              }}
+            />
+          }
+          label={params.row.enabled ? 'Active' : 'Inactive'}
+        />
+      ),
     },
     {
       field: 'last_run',
       headerName: 'Last Run',
-      width: 200,
-      valueGetter: (params: GridValueGetterParams<ScheduledCrawl>) =>
-        params.row.last_run ? format(new Date(params.row.last_run), 'PPpp') : 'Never'
+      flex: 1,
+      valueGetter: (params: GridValueGetterParams) => {
+        return params.row.last_run ? format(new Date(params.row.last_run), 'PPpp') : 'Never';
+      },
     },
     {
       field: 'actions',
       headerName: 'Actions',
       width: 120,
-      renderCell: (params: GridRenderCellParams<ScheduledCrawl>) => (
+      renderCell: (params: GridRenderCellParams) => (
         <Box>
           <IconButton
             onClick={() => {
-              setSelectedSchedule(params.row);
-              setDialogOpen(true);
+              setEditingCrawl(params.row);
+              setFormData(params.row);
+              setOpenDialog(true);
             }}
           >
             <EditIcon />
           </IconButton>
           <IconButton
             onClick={() => {
-              if (window.confirm('Are you sure you want to delete this schedule?')) {
+              if (window.confirm('Are you sure you want to delete this scheduled crawl?')) {
                 deleteMutation.mutate(params.row.id);
               }
             }}
@@ -165,111 +174,141 @@ const ScheduledCrawls: React.FC = () => {
             <DeleteIcon />
           </IconButton>
         </Box>
-      )
-    }
+      ),
+    },
   ];
 
-  const [formData, setFormData] = useState<Partial<ScheduledCrawl>>({
-    config: {
-      url: '',
-      mode: 'default',
-      options: {},
-      user_id: 'demo-user'
-    },
-    schedule: '0 0 * * *',
-    enabled: true
-  });
-
-  const handleFormChange = (field: string, value: any) => {
-    if (field === 'url') {
-      setFormData(prev => ({
-        ...prev,
-        config: {
-          ...prev.config!,
-          url: value
-        }
-      }));
+  const handleFormSubmit = () => {
+    const now = new Date().toISOString();
+    if (editingCrawl) {
+      const updatedCrawl: ScheduledCrawl = {
+        ...editingCrawl,
+        ...formData,
+        updated_at: now,
+      } as ScheduledCrawl;
+      updateMutation.mutate(updatedCrawl);
     } else {
-      setFormData(prev => ({
-        ...prev,
-        [field]: value
-      }));
+      const newCrawl: NewScheduledCrawl = {
+        ...formData,
+        created_at: now,
+        updated_at: now,
+      } as NewScheduledCrawl;
+      createMutation.mutate(newCrawl);
     }
   };
 
+  if (isLoading) {
+    return (
+      <Box display="flex" justifyContent="center" p={3}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Alert severity="error" sx={{ m: 2 }}>
+        Failed to load scheduled crawls
+      </Alert>
+    );
+  }
+
   return (
-    <Box sx={{ height: 400, width: '100%' }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h6">Scheduled Crawls</Typography>
+    <Paper sx={{ p: 3 }}>
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h5" gutterBottom>
+          Scheduled Crawls
+        </Typography>
         <Button
           variant="contained"
           onClick={() => {
-            setSelectedSchedule(null);
+            setEditingCrawl(null);
             setFormData({
-              config: {
-                url: '',
-                mode: 'default',
-                options: {},
-                user_id: 'demo-user'
-              },
+              config: defaultCrawlConfig,
               schedule: '0 0 * * *',
-              enabled: true
+              enabled: true,
             });
-            setDialogOpen(true);
+            setOpenDialog(true);
           }}
         >
-          Add Schedule
+          Add Scheduled Crawl
         </Button>
       </Box>
 
-      <Paper sx={{ height: '100%', width: '100%' }}>
-        <DataGrid
-          rows={schedules}
-          columns={columns}
-          loading={isLoading}
-          disableRowSelectionOnClick
-          autoPageSize
-        />
-      </Paper>
+      <DataGrid
+        rows={crawls || []}
+        columns={columns}
+        initialState={{
+          pagination: {
+            paginationModel: { pageSize: 5, page: 0 },
+          },
+        }}
+        pageSizeOptions={[5, 10, 25]}
+        autoHeight
+        disableRowSelectionOnClick
+      />
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>
-          {selectedSchedule ? 'Edit Schedule' : 'New Schedule'}
+          {editingCrawl ? 'Edit Scheduled Crawl' : 'New Scheduled Crawl'}
         </DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <TextField
               label="URL"
-              value={selectedSchedule?.config.url ?? formData.config?.url}
-              onChange={(e) => handleFormChange('url', e.target.value)}
+              value={formData.config?.url || ''}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  config: { ...(prev.config || defaultCrawlConfig), url: e.target.value },
+                }))
+              }
               fullWidth
+              required
             />
             <FormControl fullWidth>
               <InputLabel>Extraction Mode</InputLabel>
               <Select
-                value={selectedSchedule?.config.mode ?? formData.config?.mode}
-                onChange={(e) => handleFormChange('mode', e.target.value)}
+                value={formData.config?.mode || 'default'}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    config: {
+                      ...(prev.config || defaultCrawlConfig),
+                      mode: e.target.value as ExtractionMode,
+                    },
+                  }))
+                }
                 label="Extraction Mode"
               >
                 <MenuItem value="default">Default</MenuItem>
-                <MenuItem value="headless">Headless Browser</MenuItem>
-                <MenuItem value="sitemap">Sitemap</MenuItem>
-                <MenuItem value="api_discovery">API Discovery</MenuItem>
-                <MenuItem value="structured">Structured Data</MenuItem>
+                <MenuItem value="javascript">JavaScript</MenuItem>
+                <MenuItem value="headless">Headless</MenuItem>
               </Select>
             </FormControl>
             <TextField
               label="Schedule (cron expression)"
-              value={selectedSchedule?.schedule ?? formData.schedule}
-              onChange={(e) => handleFormChange('schedule', e.target.value)}
+              value={formData.schedule || ''}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  schedule: e.target.value,
+                }))
+              }
               fullWidth
+              required
               helperText="Example: 0 0 * * * (daily at midnight)"
             />
             <FormControlLabel
               control={
                 <Switch
-                  checked={selectedSchedule?.enabled ?? formData.enabled}
-                  onChange={(e) => handleFormChange('enabled', e.target.checked)}
+                  checked={formData.enabled || false}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      enabled: e.target.checked,
+                    }))
+                  }
                 />
               }
               label="Enabled"
@@ -277,33 +316,17 @@ const ScheduledCrawls: React.FC = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
+          <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
           <Button
             variant="contained"
-            onClick={() => {
-              const schedule = selectedSchedule
-                ? {
-                    ...selectedSchedule,
-                    ...formData
-                  }
-                : {
-                    ...formData,
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                  };
-
-              if (selectedSchedule) {
-                updateMutation.mutate(schedule);
-              } else {
-                createMutation.mutate(schedule);
-              }
-            }}
+            onClick={handleFormSubmit}
+            disabled={!formData.config?.url || !formData.schedule}
           >
-            {selectedSchedule ? 'Update' : 'Create'}
+            {editingCrawl ? 'Update' : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </Paper>
   );
 };
 

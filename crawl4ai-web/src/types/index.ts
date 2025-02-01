@@ -57,9 +57,17 @@ export interface ScheduledCrawl {
   schedule: string;
   enabled: boolean;
   created_at: string;
-  updated_at?: string;
+  updated_at: string;
   last_run?: string;
   last_error?: string;
+}
+
+export interface NewScheduledCrawl extends Omit<ScheduledCrawl, 'id'> {
+  config: CrawlConfig;
+  schedule: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CrawlAnalytics {
@@ -94,4 +102,96 @@ export interface DataEnrichment {
     }[];
   };
   translations?: Record<string, string>;
+}
+
+// LLM Agent Types
+export interface LLMAgentConfig {
+  objective: string;
+  max_depth: number;
+  allowed_domains: string[];
+  reasoning_mode: 'fast' | 'detailed';
+  temperature?: number;
+}
+
+export interface AgentStep {
+  action: 'crawl' | 'analyze' | 'store';
+  target: string;
+  reasoning: string;
+  timestamp: string;
+}
+
+export interface AgentSession {
+  id: string;
+  status: 'running' | 'completed' | 'error';
+  objective: string;
+  pages_crawled: number;
+  config: LLMAgentConfig;
+  created_at: string;
+  steps: AgentStep[];
+}
+
+export interface AgentResponse {
+  session_id: string;
+  next_action: AgentStep;
+  completion_status: number;
+  error?: string;
+}
+
+// Monitoring Dashboard Types
+export interface SystemMetrics {
+  cpu_percent: number;
+  memory_percent: number;
+  disk_usage: number;
+}
+
+export interface AgentMetrics {
+  total_sessions: number;
+  active_sessions: number;
+  error_sessions: number;
+  hourly_counts: Array<{
+    hour: string;
+    count: number;
+  }>;
+}
+
+export interface MetricsHistory {
+  daily_metrics: Array<{
+    date: string;
+    total_sessions: number;
+    success_rate: number;
+    avg_duration: number;
+  }>;
+  total_sessions_last_7_days: number;
+}
+
+export interface DashboardMetrics {
+  system: SystemMetrics;
+  agent: AgentMetrics;
+  timestamp: string;
+}
+
+export interface DeepSeekConfig {
+  api_key: string;
+  model: string;
+  temperature: number;
+  max_tokens: number;
+  top_p: number;
+  frequency_penalty: number;
+  presence_penalty: number;
+}
+
+export interface AppSettings {
+  deepseek: DeepSeekConfig;
+  crawling: {
+    max_concurrent_crawls: number;
+    request_delay: number;
+    respect_robots_txt: boolean;
+    max_retries: number;
+    timeout: number;
+  };
+  monitoring: {
+    enable_performance_tracking: boolean;
+    log_level: 'debug' | 'info' | 'warn' | 'error';
+    metrics_retention_days: number;
+  };
 }

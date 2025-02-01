@@ -1,78 +1,166 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import {
+  Box,
+  Container,
+  Typography,
+  TextField,
+  Button,
+  Paper,
+  Tab,
+  Tabs,
+  CircularProgress,
+  Alert
+} from '@mui/material';
+import { useMutation } from 'react-query';
+import { ExtractionMode, CrawlResult } from '../types';
+import MonitoringDashboard from './MonitoringDashboard';
+import AgentController from './AgentController';
+import { logger } from '../utils/logger';
 
-interface CrawlResult {
-  content?: string;
-  metadata?: Record<string, any>;
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
 }
 
+const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => {
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`tabpanel-${index}`}
+      aria-labelledby={`tab-${index}`}
+    >
+      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
+    </div>
+  );
+};
+
 const CrawlerInterface: React.FC = () => {
+  const [mode, setMode] = useState<'manual' | 'agent' | 'monitor'>('manual');
+  const [extractionMode, setExtractionMode] = useState<ExtractionMode>('default');
   const [url, setUrl] = useState('');
-  const [result, setResult] = useState<CrawlResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [tabValue, setTabValue] = useState(0);
+  const [selectedCrawlId, setSelectedCrawlId] = useState<string | null>(null);
 
-  const handleCrawl = async () => {
-    if (!url) {
-      setError('Please enter a URL');
-      return;
-    }
+  logger.debug('CrawlerInterface rendered', { mode, extractionMode, url });
 
-    setLoading(true);
-    setError('');
-    setResult(null);
+  const crawlMutation = useMutation<CrawlResult, Error, void>(
+    async () => {
+      logger.info('Starting crawl request', { url, mode: extractionMode });
+      try {
+        const response = await fetch('http://localhost:8000/api/crawl', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            url,
+            mode: extractionMode,
+            options: {}
+          })
+        });
 
-    try {
-      // Simulated crawl result for frontend demonstration
-      const mockResult = {
-        content: `Crawled content from ${url}:\n\nThis is a mock demonstration of Crawl4AI's web crawling capabilities.`,
-        metadata: {
-          url: url,
-          timestamp: new Date().toISOString()
+        if (!response.ok) {
+          const error = await response.json();
+          logger.error('Crawl request failed', error);
+          throw new Error(error.detail || 'Failed to start crawl');
         }
-      };
 
-      setResult(mockResult);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unknown error occurred');
-    } finally {
-      setLoading(false);
+        const data = await response.json();
+        logger.info('Crawl request successful', data);
+        return data;
+      } catch (error) {
+        logger.error('Crawl request error', error);
+        throw error;
+      }
     }
+  );
+
+  const handleCrawl = () => {
+    logger.info('Submitting crawl form', { url, extractionMode });
+    crawlMutation.mutate();
+  };
+
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
+  };
+
+  const handleModeChange = (newMode: ExtractionMode) => {
+    logger.debug('Extraction mode changed', newMode);
+    setExtractionMode(newMode);
   };
 
   return (
-    <div className="crawler-interface">
-      <h1>Crawl4AI Web Crawler</h1>
+    <Container maxWidth="lg">
+      <Typography variant="h4" component="h1" gutterBottom>
+        Crawl4AI Web Crawler
+      </Typography>
       
-      <div className="input-container">
-        <input 
-          type="url" 
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="Enter website URL (e.g., https://example.com)"
-          disabled={loading}
-        />
-        <button 
-          onClick={handleCrawl} 
-          disabled={loading}
+      <Box sx={{ width: '100%', p: 3 }}>
+        <Tabs 
+          value={mode} 
+          onChange={(_, newValue) => setMode(newValue)}
+          sx={{ mb: 3 }}
         >
-          {loading ? 'Crawling...' : 'Start Crawling'}
-        </button>
-      </div>
+          <Tab label="Manual Crawl" value="manual" />
+          <Tab label="AI Agent" value="agent" />
+          <Tab label="Monitor" value="monitor" />
+        </Tabs>
 
-      {error && <div className="error-message">{error}</div>}
+        {mode === 'manual' ? (
+          <Box sx={{ width: '100%', mb: 4 }}>
+            <Paper sx={{ p: 3 }}>
+              <TextField
+                fullWidth
+                label="URL to crawl"
+                value={url}
+                onChange={(e) => {
+                  logger.debug('URL changed', e.target.value);
+                  setUrl(e.target.value);
+                }}
+                sx={{ mb: 2 }}
+              />
+              
+              <Box sx={{ mb: 2 }}>
+                <Tabs value={extractionMode} onChange={(_, value) => handleModeChange(value)}>
+                  <Tab label="Default" value="default" />
+                  <Tab label="JavaScript" value="javascript" />
+                  <Tab label="Headless" value="headless" />
+                </Tabs>
+              </Box>
 
-      {loading && <div className="loading-spinner">Loading...</div>}
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleCrawl}
+                disabled={crawlMutation.isLoading || !url}
+                fullWidth
+                size="large"
+              >
+                {crawlMutation.isLoading ? (
+                  <CircularProgress size={24} color="inherit" />
+                ) : (
+                  'Start Crawl'
+                )}
+              </Button>
 
-      {result && (
-        <div className="result-container">
-          <h2>Crawled Content:</h2>
-          <pre>{result.content}</pre>
-          
-          <h3>Metadata:</h3>
-          <pre>{JSON.stringify(result.metadata, null, 2)}</pre>
-        </div>
-      )}
-    </div>
+              {crawlMutation.isError && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {crawlMutation.error?.message}
+                </Alert>
+              )}
+            </Paper>
+          </Box>
+        ) : mode === 'agent' ? (
+          <Box>
+            <AgentController />
+          </Box>
+        ) : (
+          <MonitoringDashboard />
+        )}
+      </Box>
+    </Container>
   );
 };
 

@@ -24,6 +24,7 @@ import {
 import { Visibility, VisibilityOff, Info } from '@mui/icons-material';
 import { useQuery, useMutation } from 'react-query';
 import { AppSettings } from '../types';
+import { logger } from '../utils/logger';
 
 type SnackbarSeverity = 'success' | 'error' | 'info' | 'warning';
 
@@ -52,6 +53,8 @@ const defaultSettings: AppSettings = {
 };
 
 const Settings: React.FC = () => {
+  logger.debug('Settings component rendered');
+
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [showApiKey, setShowApiKey] = useState(false);
   const [snackbar, setSnackbar] = useState<{
@@ -63,9 +66,21 @@ const Settings: React.FC = () => {
   const { data, isLoading } = useQuery<AppSettings>(
     'settings',
     async () => {
-      const response = await fetch('http://localhost:8000/api/settings');
-      if (!response.ok) throw new Error('Failed to fetch settings');
-      return response.json();
+      logger.info('Fetching settings');
+      try {
+        const response = await fetch('http://localhost:8000/api/settings');
+        if (!response.ok) {
+          const error = await response.json();
+          logger.error('Failed to fetch settings', error);
+          throw new Error(error.detail || 'Failed to fetch settings');
+        }
+        const data = await response.json();
+        logger.info('Settings fetched successfully', data);
+        return data;
+      } catch (error) {
+        logger.error('Error fetching settings', error);
+        throw error;
+      }
     },
     {
       onSuccess: (data) => {
@@ -76,13 +91,25 @@ const Settings: React.FC = () => {
 
   const updateMutation = useMutation<AppSettings, Error, AppSettings>(
     async (newSettings) => {
-      const response = await fetch('http://localhost:8000/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSettings),
-      });
-      if (!response.ok) throw new Error('Failed to update settings');
-      return response.json();
+      logger.info('Updating settings', newSettings);
+      try {
+        const response = await fetch('http://localhost:8000/api/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newSettings),
+        });
+        if (!response.ok) {
+          const error = await response.json();
+          logger.error('Failed to update settings', error);
+          throw new Error(error.detail || 'Failed to update settings');
+        }
+        const data = await response.json();
+        logger.info('Settings updated successfully', data);
+        return data;
+      } catch (error) {
+        logger.error('Error updating settings', error);
+        throw error;
+      }
     },
     {
       onSuccess: () => {

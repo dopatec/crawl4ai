@@ -15,6 +15,7 @@ import { useMutation } from 'react-query';
 import { ExtractionMode, CrawlResult } from '../types';
 import MonitoringDashboard from './MonitoringDashboard';
 import AgentController from './AgentController';
+import { logger } from '../utils/logger';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -42,29 +43,42 @@ const CrawlerInterface: React.FC = () => {
   const [tabValue, setTabValue] = useState(0);
   const [selectedCrawlId, setSelectedCrawlId] = useState<string | null>(null);
 
+  logger.debug('CrawlerInterface rendered', { mode, extractionMode, url });
+
   const crawlMutation = useMutation<CrawlResult, Error, void>(
     async () => {
-      const response = await fetch('http://localhost:8000/api/crawl', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url,
-          mode: extractionMode,
-          options: {}
-        })
-      });
+      logger.info('Starting crawl request', { url, mode: extractionMode });
+      try {
+        const response = await fetch('http://localhost:8000/api/crawl', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            url,
+            mode: extractionMode,
+            options: {}
+          })
+        });
 
-      if (!response.ok) {
-        throw new Error('Failed to crawl URL');
+        if (!response.ok) {
+          const error = await response.json();
+          logger.error('Crawl request failed', error);
+          throw new Error(error.detail || 'Failed to start crawl');
+        }
+
+        const data = await response.json();
+        logger.info('Crawl request successful', data);
+        return data;
+      } catch (error) {
+        logger.error('Crawl request error', error);
+        throw error;
       }
-
-      return response.json();
     }
   );
 
   const handleCrawl = () => {
+    logger.info('Submitting crawl form', { url, extractionMode });
     crawlMutation.mutate();
   };
 
@@ -73,6 +87,7 @@ const CrawlerInterface: React.FC = () => {
   };
 
   const handleModeChange = (newMode: ExtractionMode) => {
+    logger.debug('Extraction mode changed', newMode);
     setExtractionMode(newMode);
   };
 
@@ -100,7 +115,10 @@ const CrawlerInterface: React.FC = () => {
                 fullWidth
                 label="URL to crawl"
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={(e) => {
+                  logger.debug('URL changed', e.target.value);
+                  setUrl(e.target.value);
+                }}
                 sx={{ mb: 2 }}
               />
               

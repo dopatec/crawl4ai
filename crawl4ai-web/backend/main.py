@@ -33,6 +33,11 @@ class CrawlRequest(BaseModel):
     max_depth: Optional[int] = 1
     timeout: Optional[int] = 30
 
+class Settings(BaseModel):
+    deepseek: dict
+    crawling: dict
+    monitoring: dict
+
 async def verify_auth_token(authorization: str = Depends(lambda x: x.headers.get("Authorization"))):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid authorization header")
@@ -61,6 +66,105 @@ async def crawl_website(request: CrawlRequest, user = Depends(verify_auth_token)
         }
         
         return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/dashboard/stats")
+async def get_dashboard_stats():  
+    try:
+        # Mock data for testing
+        return {
+            "total_crawls": 10,
+            "active_crawls": 2,
+            "scheduled_crawls": 3,
+            "success_rate": 85,
+            "performance_metrics": [
+                {
+                    "timestamp": "2025-02-01T22:00:00",
+                    "crawl_speed": 120,
+                    "memory_usage": 45,
+                    "cpu_usage": 30
+                },
+                {
+                    "timestamp": "2025-02-01T22:15:00",
+                    "crawl_speed": 125,
+                    "memory_usage": 48,
+                    "cpu_usage": 35
+                }
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/settings")
+async def get_settings():  
+    try:
+        return {
+            "deepseek": {
+                "api_key": "",
+                "model": "deepseek-chat",
+                "temperature": 0.7,
+                "max_tokens": 2000,
+                "top_p": 0.95,
+                "frequency_penalty": 0,
+                "presence_penalty": 0,
+            },
+            "crawling": {
+                "max_concurrent_crawls": 5,
+                "request_delay": 1000,
+                "respect_robots_txt": True,
+                "max_retries": 3,
+                "timeout": 30000,
+            },
+            "monitoring": {
+                "enable_performance_tracking": True,
+                "log_level": "info",
+                "metrics_retention_days": 30,
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/settings")
+async def update_settings(settings: Settings):  
+    try:
+        # In a real application, we would save these settings to a database
+        # For now, we'll just return the settings back
+        return settings.dict()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/agent/sessions")
+async def get_agent_sessions():  
+    try:
+        return []  
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/scheduled-crawls")
+async def get_scheduled_crawls():  
+    try:
+        return []  
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/scheduled-crawls")
+async def create_scheduled_crawl(
+    crawl: CrawlRequest,
+    schedule: str,
+    user = Depends(verify_auth_token)
+):
+    try:
+        data = {
+            "url": crawl.url,
+            "extraction_mode": crawl.extraction_mode,
+            "max_depth": crawl.max_depth,
+            "timeout": crawl.timeout,
+            "schedule": schedule,
+            "user_id": user.id
+        }
+        result = supabase.table('scheduled_crawls').insert(data).execute()
+        return result.data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
